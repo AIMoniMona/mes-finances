@@ -49,6 +49,125 @@ async function refreshRates(){
 }function toXof(n,c){return Number(n||0)*(rates()[c]||1)}function accountBalance(a){return Number(a.opening||0)+data.transactions.filter(t=>t.account===a.name).reduce((s,t)=>s+(t.type==='income'?1:-1)*toXof(t.amount,t.currency)/(rates()[a.currency]||1),0)}function monthTx(){let m=new Date().toISOString().slice(0,7);return data.transactions.filter(t=>t.date&&t.date.slice(0,7)===m)}function totalXof(){return data.accounts.reduce((s,a)=>s+toXof(accountBalance(a),a.currency),0)}function moneyXof(n){return fmt(n,'XOF')}function applyTheme(){const t=data.settings?.theme||{primary:'#173D32',accent:'#B8D9B2'};const primary=/^#[0-9a-f]{6}$/i.test(t.primary)?t.primary:'#173D32';const accent=/^#[0-9a-f]{6}$/i.test(t.accent)?t.accent:'#B8D9B2';document.documentElement.style.setProperty('--green',primary);document.documentElement.style.setProperty('--mint',accent);document.querySelector('meta[name=theme-color]')?.setAttribute('content',primary);if($('themePrimary'))$('themePrimary').value=primary;if($('themeAccent'))$('themeAccent').value=accent}function setTheme(primary,accent){data.settings=data.settings||{};data.settings.theme={primary,accent};save();showPage('settings')}function saveThemeFromInputs(){setTheme($('themePrimary').value,$('themeAccent').value);alert('Thème enregistré sur cet appareil.')}
 function render(){let m=monthTx(),inc=m.filter(t=>t.type==='income').reduce((s,t)=>s+toXof(t.amount,t.currency),0),out=m.filter(t=>t.type==='expense').reduce((s,t)=>s+toXof(t.amount,t.currency),0);$('totalBalance').textContent=moneyXof(totalXof());$('monthIncome').textContent=moneyXof(inc);$('monthExpense').textContent=moneyXof(out);$('monthLabel').textContent=new Date().toLocaleDateString('fr-FR',{month:'long',year:'numeric'});$('homeAccounts').innerHTML=data.accounts.map(a=>`<div class="row"><div><b>${esc(a.name)}</b><div class="muted">${esc(a.currency)}</div></div><b>${fmt(accountBalance(a),a.currency)}</b></div>`).join('')||'<div class="empty">Aucun compte</div>';let txhtml=arr=>arr.length?arr.slice().sort((a,b)=>b.date.localeCompare(a.date)).map(t=>`<div class="row"><div><b>${esc(t.label)}</b><div class="muted">${esc(t.date)} · ${esc(t.category)} · ${esc(t.account)}</div></div><div class="amount ${t.type==='income'?'positive':'negative'}">${t.type==='income'?'+':'−'}${fmt(t.amount,t.currency)}</div></div>`).join(''):'<div class="empty">Aucune opération enregistrée. Ajoute ton premier revenu ou ta première dépense.</div>';$('recentTransactions').innerHTML=txhtml(data.transactions.slice(-5).reverse());$('allTransactions').innerHTML=txhtml(data.transactions);$('allAccounts').innerHTML=data.accounts.map(a=>`<div class="row"><div><b>${esc(a.name)}</b><div class="muted">Solde initial : ${fmt(a.opening,a.currency)}</div></div><div style="text-align:right"><b>${fmt(accountBalance(a),a.currency)}</b><div class="muted">${a.currency}</div></div></div>`).join('');$('budgetList').innerHTML=data.budgets.length?data.budgets.map((b,i)=>{let spent=monthTx().filter(t=>t.type==='expense'&&t.category===b.category).reduce((s,t)=>s+toXof(t.amount,t.currency),0),limit=toXof(b.amount,b.currency),pct=limit?Math.min(100,spent/limit*100):0;return `<div class="row"><div style="flex:1"><b>${esc(b.category)}</b><div class="muted">Dépensé ${moneyXof(spent)} / budget ${fmt(b.amount,b.currency)}</div><div class="progress"><div style="width:${pct}%"></div></div></div><button class="secondary smallbtn" onclick="removeItem('budgets',${i})">×</button></div>`}).join(''):'<div class="empty">Aucun budget défini.</div>';$('goalList').innerHTML=data.goals.length?data.goals.map((g,i)=>`<div class="row"><div style="flex:1"><b>${esc(g.name)}</b><div class="muted">${fmt(g.saved,g.currency)} sur ${fmt(g.target,g.currency)}</div><div class="progress"><div style="width:${Math.min(100,100*g.saved/Math.max(1,g.target))}%"></div></div></div><button class="secondary smallbtn" onclick="contribute(${i})">+ Ajouter</button><button class="secondary smallbtn" onclick="removeItem('goals',${i})">×</button></div>`).join(''):'<div class="empty">Aucun objectif d’épargne.</div>';$('debtList').innerHTML=data.debts.length?data.debts.map((d,i)=>`<div class="row"><div><b>${esc(d.person)}</b><div class="muted">${d.kind==='owed'?'Je dois':'On me doit'} · ${esc(d.due||'Sans échéance')}</div></div><b>${fmt(d.amount,d.currency)}</b><button class="secondary smallbtn" onclick="removeItem('debts',${i})">×</button></div>`).join(''):'<div class="empty">Aucune dette ou créance.</div>';$('recurringList').innerHTML=data.recurring.length?data.recurring.map((r,i)=>`<div class="row"><div><b>${esc(r.label)}</b><div class="muted">${esc(r.frequency)} · ${esc(r.category)} · ${esc(r.account)}</div></div><b>${fmt(r.amount,r.currency)}</b><button class="secondary smallbtn" onclick="removeItem('recurring',${i})">×</button></div>`).join(''):'<div class="empty">Aucune dépense récurrente.</div>';$('reportSummary').innerHTML=`<div class="row"><span>Revenus du mois</span><b class="positive">${moneyXof(inc)}</b></div><div class="row"><span>Dépenses du mois</span><b class="negative">${moneyXof(out)}</b></div><div class="row"><span>Solde du mois</span><b>${moneyXof(inc-out)}</b></div><div class="row"><span>Solde total estimé</span><b>${moneyXof(totalXof())}</b></div><p class="muted">Conversion indicative : 1 EUR = ${rates().EUR} XOF ; 1 USD = ${rates().USD} XOF. <button class="secondary smallbtn" onclick="editRates()">Modifier les taux</button></p>`;let cats={};m.filter(t=>t.type==='expense').forEach(t=>cats[t.category]=(cats[t.category]||0)+toXof(t.amount,t.currency));let max=Math.max(1,...Object.values(cats));$('categoryChart').innerHTML=Object.keys(cats).length?Object.entries(cats).sort((a,b)=>b[1]-a[1]).map(([c,v])=>`<div style="margin:13px 0"><div class="row" style="padding:0;border:0"><span>${esc(c)}</span><b>${moneyXof(v)}</b></div><div class="progress"><div style="width:${v/max*100}%"></div></div></div>`).join(''):'<div class="empty">Les dépenses par catégorie apparaîtront ici.</div>'}
 function showPage(id,btn){document.querySelectorAll('main section').forEach(s=>s.classList.add('hidden'));$(id).classList.remove('hidden');document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.page===id));window.scrollTo(0,0)}function openTransaction(type='expense'){type=type||'expense';$('modalTitle').textContent=type==='income'?'Ajouter un revenu':'Ajouter une dépense';$('modalBody').innerHTML=`<form onsubmit="saveTransaction(event,'${type}')"><div class="formgrid"><label class="field full">Libellé<input name="label" required placeholder="Ex. Courses, salaire..."></label><label class="field">Montant<input name="amount" required type="number" min="0.01" step="any" inputmode="decimal"></label><label class="field">Devise<select name="currency">${currencies.map(c=>`<option>${c}</option>`).join('')}</select></label><label class="field">Date<input name="date" type="date" value="${new Date().toISOString().slice(0,10)}" required></label><label class="field">Catégorie<select name="category">${(type==='income'?['Salaire','Activité indépendante','Prime','Remboursement','Autre']:['Alimentation','Logement','Transport','Santé','Famille','Factures','Loisirs','Shopping','Éducation','Voyage','Autre']).map(c=>`<option>${c}</option>`).join('')}</select></label><label class="field full">Compte<select name="account">${data.accounts.map(a=>`<option>${esc(a.name)}</option>`).join('')}</select></label><label class="field full">Note (facultatif)<input name="note" placeholder="Détail supplémentaire"></label></div><button class="primary" style="width:100%;margin-top:16px">Enregistrer</button></form>`;$('modal').showModal()}function saveTransaction(e,type){e.preventDefault();let f=new FormData(e.target);data.transactions.push({id:Date.now(),type,label:f.get('label'),amount:Number(f.get('amount')),currency:f.get('currency'),date:f.get('date'),category:f.get('category'),account:f.get('account'),note:f.get('note')});save();$('modal').close()}
-function formModal(title,html,fn){$('modalTitle').textContent=title;$('modalBody').innerHTML=html;$('modal').showModal()}function currencyOptions(){return currencies.map(c=>`<option>${c}</option>`).join('')}function addBudget(){formModal('Créer un budget',`<form onsubmit="saveBudget(event)"><label class="field">Catégorie<input name="category" required placeholder="Ex. Alimentation"></label><div class="formgrid" style="margin-top:10px"><label class="field">Plafond<input name="amount" type="number" min="1" required></label><label class="field">Devise<select name="currency">${currencyOptions()}</select></label></div><button class="primary" style="margin-top:14px;width:100%">Enregistrer</button></form>`)}function saveBudget(e){e.preventDefault();let f=new FormData(e.target);data.budgets.push({category:f.get('category'),amount:+f.get('amount'),currency:f.get('currency')});save();$('modal').close()}function addGoal(){formModal('Nouvel objectif',`<form onsubmit="saveGoal(event)"><label class="field">Nom de l'objectif<input name="name" required placeholder="Ex. Fonds d'urgence"></label><div class="formgrid" style="margin-top:10px"><label class="field">Montant cible<input name="target" type="number" min="1" required></label><label class="field">Déjà épargné<input name="saved" type="number" min="0" value="0"></label><label class="field full">Devise<select name="currency">${currencyOptions()}</select></label></div><button class="primary" style="margin-top:14px;width:100%">Créer l'objectif</button></form>`)}function saveGoal(e){e.preventDefault();let f=new FormData(e.target);data.goals.push({name:f.get('name'),target:+f.get('target'),saved:+f.get('saved'),currency:f.get('currency')});save();$('modal').close()}function contribute(i){let n=prompt('Montant à ajouter à cet objectif ('+data.goals[i].currency+')');if(n!==null&&Number(n)>0){data.goals[i].saved+=Number(n);save()}}function addDebt(){formModal('Ajouter une dette ou créance',`<form onsubmit="saveDebt(event)"><label class="field">Type<select name="kind"><option value="owed">Je dois de l'argent</option><option value="receivable">On me doit de l'argent</option></select></label><label class="field" style="margin-top:10px">Personne / organisme<input name="person" required></label><div class="formgrid" style="margin-top:10px"><label class="field">Montant<input name="amount" type="number" min="0.01" required></label><label class="field">Devise<select name="currency">${currencyOptions()}</select></label><label class="field full">Échéance (facultatif)<input name="due" type="date"></label></div><button class="primary" style="margin-top:14px;width:100%">Enregistrer</button></form>`)}function saveDebt(e){e.preventDefault();let f=new FormData(e.target);data.debts.push({kind:f.get('kind'),person:f.get('person'),amount:+f.get('amount'),currency:f.get('currency'),due:f.get('due')});save();$('modal').close()}function addRecurring(){formModal('Dépense récurrente',`<form onsubmit="saveRecurring(event)"><label class="field">Libellé<input name="label" required placeholder="Ex. Loyer"></label><div class="formgrid" style="margin-top:10px"><label class="field">Montant<input name="amount" type="number" min="0.01" required></label><label class="field">Devise<select name="currency">${currencyOptions()}</select></label><label class="field">Fréquence<select name="frequency"><option>Mensuelle</option><option>Hebdomadaire</option><option>Annuelle</option></select></label><label class="field">Catégorie<input name="category" value="Factures"></label><label class="field full">Compte<select name="account">${data.accounts.map(a=>`<option>${esc(a.name)}</option>`).join('')}</select></label></div><button class="primary" style="margin-top:14px;width:100%">Enregistrer</button></form>`)}function saveRecurring(e){e.preventDefault();let f=new FormData(e.target);data.recurring.push(Object.fromEntries(['label','amount','currency','frequency','category','account'].map(k=>[k,k==='amount'?+f.get(k):f.get(k)])));save();$('modal').close()}function removeItem(k,i){if(confirm('Supprimer cet élément ?')){data[k].splice(i,1);save()}}function editAccounts(){formModal('Soldes initiaux des comptes',`<form onsubmit="saveAccounts(event)">${data.accounts.map((a,i)=>`<div class="formgrid" style="margin:10px 0"><label class="field">${esc(a.name)}<select name="c${i}">${currencies.map(c=>`<option ${a.currency===c?'selected':''}>${c}</option>`).join('')}</select></label><label class="field">Solde initial<input name="b${i}" type="number" step="any" value="${a.opening}" required></label></div>`).join('')}<button class="primary" style="width:100%;margin-top:12px">Enregistrer</button></form>`)}function saveAccounts(e){e.preventDefault();let f=new FormData(e.target);data.accounts.forEach((a,i)=>{a.currency=f.get('c'+i);a.opening=+f.get('b'+i)});save();$('modal').close()}function editRates(){let r=rates();formModal('Taux de conversion indicatifs',`<form onsubmit="saveRates(event)"><label class="field">1 EUR en XOF<input name="eur" type="number" step="any" value="${r.EUR}" required></label><label class="field" style="margin-top:10px">1 USD en XOF<input name="usd" type="number" step="any" value="${r.USD}" required></label><button class="primary" style="width:100%;margin-top:14px">Enregistrer</button></form><p class="muted">Ces taux servent aux estimations du tableau de bord ; ils ne sont pas mis à jour automatiquement.</p>`)}function saveRates(e){e.preventDefault();let f=new FormData(e.target);localStorage.setItem('rateEUR',f.get('eur'));localStorage.setItem('rateUSD',f.get('usd'));render();$('modal').close()}function csvCell(x){return '"'+String(x??'').replace(/"/g,'""')+'"'}function exportCSV(){let rows=[['Date','Type','Libellé','Catégorie','Compte','Montant','Devise','Note'],...data.transactions.map(t=>[t.date,t.type,t.label,t.category,t.account,t.amount,t.currency,t.note])];let blob=new Blob(['\ufeff'+rows.map(r=>r.map(csvCell).join(';')).join('\r\n')],{type:'text/csv;charset=utf-8;'});download(blob,'mes-finances-operations.csv')}function backup(){download(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),'mes-finances-sauvegarde.json')}function download(blob,name){let a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}function restore(e){let file=e.target.files[0];if(!file)return;let r=new FileReader();r.onload=()=>{try{let x=JSON.parse(r.result);if(!x.accounts||!x.transactions)throw Error();data={...defaultData,...x,settings:{...defaultData.settings,...(x.settings||{}),theme:{...defaultData.settings.theme,...((x.settings||{}).theme||{})}}};save();alert('Sauvegarde importée.')}catch{alert('Fichier de sauvegarde invalide.')}};r.readAsText(file)}
+function formModal(title,html,fn){$('modalTitle').textContent=title;$('modalBody').innerHTML=html;$('modal').showModal()}function currencyOptions(){return currencies.map(c=>`<option>${c}</option>`).join('')}function addBudget(){formModal('Créer un budget',`<form onsubmit="saveBudget(event)"><label class="field">Catégorie<input name="category" required placeholder="Ex. Alimentation"></label><div class="formgrid" style="margin-top:10px"><label class="field">Plafond<input name="amount" type="number" min="1" required></label><label class="field">Devise<select name="currency">${currencyOptions()}</select></label></div><button class="primary" style="margin-top:14px;width:100%">Enregistrer</button></form>`)}function saveBudget(e){e.preventDefault();let f=new FormData(e.target);data.budgets.push({category:f.get('category'),amount:+f.get('amount'),currency:f.get('currency')});save();$('modal').close()}function addGoal(){formModal('Nouvel objectif',`<form onsubmit="saveGoal(event)"><label class="field">Nom de l'objectif<input name="name" required placeholder="Ex. Fonds d'urgence"></label><div class="formgrid" style="margin-top:10px"><label class="field">Montant cible<input name="target" type="number" min="1" required></label><label class="field">Déjà épargné<input name="saved" type="number" min="0" value="0"></label><label class="field full">Devise<select name="currency">${currencyOptions()}</select></label></div><button class="primary" style="margin-top:14px;width:100%">Créer l'objectif</button></form>`)}function saveGoal(e){e.preventDefault();let f=new FormData(e.target);data.goals.push({name:f.get('name'),target:+f.get('target'),saved:+f.get('saved'),currency:f.get('currency')});save();$('modal').close()}function contribute(i){let n=prompt('Montant à ajouter à cet objectif ('+data.goals[i].currency+')');if(n!==null&&Number(n)>0){data.goals[i].saved+=Number(n);save()}}function addDebt(){formModal('Ajouter une dette ou créance',`<form onsubmit="saveDebt(event)"><label class="field">Type<select name="kind"><option value="owed">Je dois de l'argent</option><option value="receivable">On me doit de l'argent</option></select></label><label class="field" style="margin-top:10px">Personne / organisme<input name="person" required></label><div class="formgrid" style="margin-top:10px"><label class="field">Montant<input name="amount" type="number" min="0.01" required></label><label class="field">Devise<select name="currency">${currencyOptions()}</select></label><label class="field full">Échéance (facultatif)<input name="due" type="date"></label></div><button class="primary" style="margin-top:14px;width:100%">Enregistrer</button></form>`)}function saveDebt(e){e.preventDefault();let f=new FormData(e.target);data.debts.push({kind:f.get('kind'),person:f.get('person'),amount:+f.get('amount'),currency:f.get('currency'),due:f.get('due')});save();$('modal').close()}function addRecurring(){formModal('Dépense récurrente',`<form onsubmit="saveRecurring(event)"><label class="field">Libellé<input name="label" required placeholder="Ex. Loyer"></label><div class="formgrid" style="margin-top:10px"><label class="field">Montant<input name="amount" type="number" min="0.01" required></label><label class="field">Devise<select name="currency">${currencyOptions()}</select></label><label class="field">Fréquence<select name="frequency"><option>Mensuelle</option><option>Hebdomadaire</option><option>Annuelle</option></select></label><label class="field">Catégorie<input name="category" value="Factures"></label><label class="field full">Compte<select name="account">${data.accounts.map(a=>`<option>${esc(a.name)}</option>`).join('')}</select></label></div><button class="primary" style="margin-top:14px;width:100%">Enregistrer</button></form>`)}function saveRecurring(e){e.preventDefault();let f=new FormData(e.target);data.recurring.push(Object.fromEntries(['label','amount','currency','frequency','category','account'].map(k=>[k,k==='amount'?+f.get(k):f.get(k)])));save();$('modal').close()}function removeItem(k,i){if(confirm('Supprimer cet élément ?')){data[k].splice(i,1);save()}}function editAccounts(){
+  formModal('Gérer les comptes', `
+    <div style="margin-bottom:14px">
+      <p class="muted">Modifie les informations de tes comptes. Les opérations existantes sont conservées.</p>
+    </div>
+
+    ${data.accounts.map((a,i)=>`
+      <div class="panel" style="margin:10px 0;padding:12px">
+        <form onsubmit="saveAccountDetails(event,${i})">
+          <label class="field">Nom du compte
+            <input name="name" value="${esc(a.name)}" required>
+          </label>
+
+          <label class="field" style="margin-top:8px">Type de compte
+            <select name="type">
+              ${['Banque','Espèces','Mobile money','Épargne','Autre'].map(t=>
+                `<option ${((a.type||'Autre')===t)?'selected':''}>${t}</option>`
+              ).join('')}
+            </select>
+          </label>
+
+          <div class="formgrid" style="margin-top:8px">
+            <label class="field">Devise
+              <select name="currency">
+                ${currencies.map(c=>
+                  `<option ${a.currency===c?'selected':''}>${c}</option>`
+                ).join('')}
+              </select>
+            </label>
+
+            <label class="field">Solde initial
+              <input name="opening" type="number" step="any" value="${a.opening}" required>
+            </label>
+          </div>
+
+          <button class="primary" style="width:100%;margin-top:10px">
+            Enregistrer ce compte
+          </button>
+        </form>
+
+        <button class="secondary" style="width:100%;margin-top:8px"
+          onclick="deleteAccount(${i})">
+          Supprimer ce compte
+        </button>
+      </div>
+    `).join('')}
+
+    <button class="primary" style="width:100%;margin-top:12px"
+      onclick="addAccount()">
+      + Ajouter un compte
+    </button>
+  `);
+}
+
+function saveAccountDetails(e,i){
+  e.preventDefault();
+
+  const f = new FormData(e.target);
+  const oldName = data.accounts[i].name;
+  const newName = String(f.get('name')).trim();
+
+  if(!newName){
+    alert('Le nom du compte est obligatoire.');
+    return;
+  }
+
+  if(data.accounts.some((a,j)=>j!==i&&a.name.toLowerCase()===newName.toLowerCase())){
+    alert('Un compte porte déjà ce nom. Choisis un autre nom.');
+    return;
+  }
+
+  data.accounts[i].name = newName;
+  data.accounts[i].type = f.get('type');
+  data.accounts[i].currency = f.get('currency');
+  data.accounts[i].opening = Number(f.get('opening'));
+
+  data.transactions.forEach(t=>{
+    if(t.account===oldName)t.account=newName;
+  });
+
+  data.recurring.forEach(r=>{
+    if(r.account===oldName)r.account=newName;
+  });
+
+  save();
+  $('modal').close();
+}
+
+function addAccount(){
+  formModal('Ajouter un compte', `
+    <form onsubmit="saveNewAccount(event)">
+      <label class="field">Nom du compte
+        <input name="name" required placeholder="Ex. Banque principale">
+      </label>
+
+      <label class="field" style="margin-top:10px">Type de compte
+        <select name="type">
+          <option>Banque</option>
+          <option>Espèces</option>
+          <option>Mobile money</option>
+          <option>Épargne</option>
+          <option>Autre</option>
+        </select>
+      </label>
+
+      <div class="formgrid" style="margin-top:10px">
+        <label class="field">Devise
+          <select name="currency">${currencyOptions()}</select>
+        </label>
+        <label class="field">Solde initial
+          <input name="opening" type="number" step="any" value="0" required>
+        </label>
+      </div>
+
+      <button class="primary" style="width:100%;margin-top:14px">
+        Créer le compte
+      </button>
+    </form>
+  `);
+}function editRates(){let r=rates();formModal('Taux de conversion indicatifs',`<form onsubmit="saveRates(event)"><label class="field">1 EUR en XOF<input name="eur" type="number" step="any" value="${r.EUR}" required></label><label class="field" style="margin-top:10px">1 USD en XOF<input name="usd" type="number" step="any" value="${r.USD}" required></label><button class="primary" style="width:100%;margin-top:14px">Enregistrer</button></form><p class="muted">Ces taux servent aux estimations du tableau de bord ; ils ne sont pas mis à jour automatiquement.</p>`)}function saveRates(e){e.preventDefault();let f=new FormData(e.target);localStorage.setItem('rateEUR',f.get('eur'));localStorage.setItem('rateUSD',f.get('usd'));render();$('modal').close()}function csvCell(x){return '"'+String(x??'').replace(/"/g,'""')+'"'}function exportCSV(){let rows=[['Date','Type','Libellé','Catégorie','Compte','Montant','Devise','Note'],...data.transactions.map(t=>[t.date,t.type,t.label,t.category,t.account,t.amount,t.currency,t.note])];let blob=new Blob(['\ufeff'+rows.map(r=>r.map(csvCell).join(';')).join('\r\n')],{type:'text/csv;charset=utf-8;'});download(blob,'mes-finances-operations.csv')}function backup(){download(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),'mes-finances-sauvegarde.json')}function download(blob,name){let a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}function restore(e){let file=e.target.files[0];if(!file)return;let r=new FileReader();r.onload=()=>{try{let x=JSON.parse(r.result);if(!x.accounts||!x.transactions)throw Error();data={...defaultData,...x,settings:{...defaultData.settings,...(x.settings||{}),theme:{...defaultData.settings.theme,...((x.settings||{}).theme||{})}}};save();alert('Sauvegarde importée.')}catch{alert('Fichier de sauvegarde invalide.')}};r.readAsText(file)}
 applyTheme();if('serviceWorker'in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('./sw.js').catch(()=>{});render();refreshRates();
 </script></body></html>
