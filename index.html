@@ -251,15 +251,6 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
-async function cloudSignIn() {
-  const email = $('cloudEmail').value.trim();
-  const password = $('cloudPassword').value;
-  const status = $('cloudStatus');
-
-  if (!email || !password) {
-    status.textContent =
-      'Saisis ton adresse e-mail et ton mot de passe.';
-    return;
   
 async function cloudSignIn() {
   const email = $('cloudEmail').value.trim();
