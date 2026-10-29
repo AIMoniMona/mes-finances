@@ -141,9 +141,10 @@ async function cloudSignOut() {
   }
 }
 
+
 async function cloudSyncNow() {
   const status = $('cloudStatus');
-  status.textContent = 'Vérification du cloud…';
+  status.textContent = 'Synchronisation en cours…';
 
   try {
     const { data: authResult, error: authError } =
@@ -165,9 +166,6 @@ async function cloudSyncNow() {
 
     if (readError) throw readError;
 
-    const hasLocalData = ['transactions', 'budgets', 'goals', 'debts', 'recurring']
-      .some(key => Array.isArray(data[key]) && data[key].length > 0);
-
     if (!cloudRow) {
       const { error } = await supabaseClient
         .from('user_data')
@@ -178,95 +176,121 @@ async function cloudSyncNow() {
         });
 
       if (error) throw error;
-      status.textContent = 'Première sauvegarde envoyée au cloud. Tes données locales sont conservées.';
+      status.textContent = 'Première sauvegarde envoyée au cloud.';
       return;
     }
 
-    if (!hasLocalData) {
-      if (confirm('Des données existent dans le cloud. Veux-tu les récupérer sur cet appareil ?')) {
-        const cloudData = cloudRow.payload;
+    const cloudData = cloudRow.payload;
 
-        if (!cloudData || typeof cloudData !== 'object') {
-          throw new Error('Les données cloud sont illisibles. Aucune donnée locale n’a été modifiée.');
-        }
-
-        data = {
-          ...defaultData,
-          ...cloudData,
-          settings: {
-            ...defaultData.settings,
-            ...(cloudData.settings || {}),
-            theme: {
-              ...defaultData.settings.theme,
-              ...((cloudData.settings || {}).theme || {})
-            }
-          }
-        };
-
-        localStorage.setItem(KEY, JSON.stringify(data));
-        applyTheme();
-        render();
-        status.textContent = 'Données récupérées du cloud sur cet appareil.';
-      } else {
-        status.textContent = 'Aucune modification effectuée.';
-      }
-      return;
+    if (!cloudData || typeof cloudData !== 'object') {
+      throw new Error('Données cloud illisibles. Synchronisation annulée.');
     }
 
-    const choice = prompt(
-      'Des données existent déjà sur cet appareil et dans le cloud.\n\n' +
-      'Tape CLOUD pour récupérer les données du cloud sur cet appareil.\n' +
-      'Tape LOCAL pour remplacer les données du cloud par celles de cet appareil.\n' +
-      'Toute autre réponse annule.'
-    );
+    const collections = [
+      'transactions',
+      'budgets',
+      'goals',
+      'debts',
+      'recurring',
+      'accounts'
+    ];
 
-    if (choice && choice.trim().toUpperCase() === 'CLOUD') {
-      const cloudData = cloudRow.payload;
-
-      if (!cloudData || typeof cloudData !== 'object') {
-        throw new Error('Les données cloud sont illisibles. Aucune donnée locale n’a été modifiée.');
-      }
-
-      data = {
-        ...defaultData,
-        ...cloudData,
-        settings: {
-          ...defaultData.settings,
-          ...(cloudData.settings || {}),
-          theme: {
-            ...defaultData.settings.theme,
-            ...((cloudData.settings || {}).theme || {})
-          }
+    const merged = {
+      ...defaultData,
+      ...data,
+      settings: {
+        ...defaultData.settings,
+        ...(cloudData.settings || {}),
+        ...(data.settings || {}),
+        theme: {
+          ...defaultData.settings.theme,
+          ...((cloudData.settings || {}).theme || {}),
+          ...((data.settings || {}).theme || {})
         }
+      }
+    };
+
+    for (const key of collections) {
+      const localItems = Array.isArray(data[key]) ? data[key] : [];
+      const cloudItems = Array.isArray(cloudData[key])
+        ? cloudData[key]
+        : [];
+
+      const getId = item => {
+        if (item.id !== undefined && item.id !== null) {
+          return String(item.id);
+        }
+
+        if (key === 'accounts') {
+          return String(item.name || '').trim().toLowerCase();
+        }
+
+        return null;
       };
 
-      localStorage.setItem(KEY, JSON.stringify(data));
-      applyTheme();
-      render();
-      status.textContent = 'Données du cloud récupérées sur cet appareil.';
-    } else if (choice && choice.trim().toUpperCase() === 'LOCAL') {
-      if (!confirm('Confirmer le remplacement des données du cloud par les données locales de cet appareil ?')) {
-        status.textContent = 'Opération annulée. Aucune donnée modifiée.';
-        return;
+      const itemsById = new Map();
+
+      for (const item of cloudItems) {
+        const id = getId(item);
+        if (id !== null) itemsById.set(id, item);
+        else itemsById.set(
+          '__cloud_' + itemsById.size,
+          item
+        );
       }
 
-      const { error } = await supabaseClient
-        .from('user_data')
-        .update({
-          payload: data,
-          updated_at: new Date().toISOString()
-        })
-        .eq('user_id', user.id);
+      for (const item of localItems) {
+        const id = getId(item);
 
-      if (error) throw error;
-      status.textContent = 'Données locales sauvegardées dans le cloud.';
-    } else {
-      status.textContent = 'Synchronisation annulée. Aucune donnée modifiée.';
+        if (id !== null) {
+          itemsById.set(id, item);
+        } else {
+          itemsById.set('__local_' + itemsById.size, item);
+        }
+      }
+
+      merged[key] = Array.from(itemsById.values());
     }
+
+    const confirmed = confirm(
+      'Fusionner les données locales et celles du cloud ?\n\n' +
+      'Les opérations distinctes seront conservées. ' +
+      'En cas de même identifiant, la version locale sera prioritaire.'
+    );
+
+    if (!confirmed) {
+      status.textContent = 'Synchronisation annulée.';
+      return;
+    }
+
+    const { error: updateError } = await supabaseClient
+      .from('user_data')
+      .update({
+        payload: merged,
+        updated_at: new Date().toISOString()
+      })
+      .eq('user_id', user.id);
+
+    if (updateError) throw updateError;
+
+    data = {
+      ...defaultData,
+      ...merged
+    };
+
+    localStorage.setItem(KEY, JSON.stringify(data));
+    applyTheme();
+    render();
+
+    status.textContent =
+      'Fusion terminée. Les données réunies sont enregistrées dans le cloud et sur cet appareil.';
+
   } catch (error) {
-    status.textContent = 'Erreur de synchronisation : ' + error.message;
+    status.textContent =
+      'Erreur de synchronisation : ' + error.message;
   }
 }
+
 const $=id=>document.getElementById(id);const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const currencies=['XOF','EUR','USD'];const symbols={XOF:'FCFA',EUR:'€',USD:'$'};function fmt(n,c){return new Intl.NumberFormat('fr-FR',{maximumFractionDigits:c==='XOF'?0:2,minimumFractionDigits:0}).format(Number(n)||0)+' '+symbols[c||'XOF']}function rates(){
   return {
     XOF: 1,
