@@ -66,7 +66,45 @@
 <nav class="tabs"><button class="tab active" data-page="home" onclick="showPage('home',this)"><span>⌂</span>Accueil</button><button class="tab" data-page="transactions" onclick="showPage('transactions',this)"><span>⇄</span>Opérations</button><button class="tab" data-page="budgets" onclick="showPage('budgets',this)"><span>▤</span>Budget</button><button class="tab" data-page="debts" onclick="showPage('debts',this)"><span>⇆</span>Dettes</button><button class="tab" data-page="reports" onclick="showPage('reports',this)"><span>▥</span>Rapports</button></nav>
 <dialog id="modal"><div class="dialogtop"><h2 id="modalTitle">Ajouter une opération</h2><button class="close" onclick="modal.close()">×</button></div><div id="modalBody"></div></dialog>
 <script>
-const KEY='mes-finances-v1';const defaultData={settings:{theme:{primary:'#173D32',accent:'#B8D9B2'}},accounts:[{name:'Espèces',currency:'XOF',opening:0},{name:'Banque',currency:'XOF',opening:0},{name:'Mobile Money',currency:'XOF',opening:0},{name:'Épargne',currency:'XOF',opening:0}],transactions:[],budgets:[],goals:[],debts:[],recurring:[]};let data=load();function load(){try{const x=JSON.parse(localStorage.getItem(KEY)||'{}');return {...defaultData,...x,settings:{...defaultData.settings,...(x.settings||{}),theme:{...defaultData.settings.theme,...((x.settings||{}).theme||{})}}}}catch{return structuredClone(defaultData)}}function save(){localStorage.setItem(KEY,JSON.stringify(data));applyTheme();render()}
+const KEY='mes-finances-v1';const defaultData={settings:{theme:{primary:'#173D32',accent:'#B8D9B2'}},accounts:[{name:'Espèces',currency:'XOF',opening:0},{name:'Banque',currency:'XOF',opening:0},{name:'Mobile Money',currency:'XOF',opening:0},{name:'Épargne',currency:'XOF',opening:0}],transactions:[],budgets:[],goals:[],debts:[],recurring:[]};let data=load();function load(){try{const x=JSON.parse(localStorage.getItem(KEY)||'{}');return {...defaultData,...x,settings:{...defaultData.settings,...(x.settings||{}),theme:{...defaultData.settings.theme,...((x.settings||{}).theme||{})}}}}catch{return structuredClone(defaultData)}}
+let cloudSaveTimer = null;
+
+function queueCloudSave() {
+  clearTimeout(cloudSaveTimer);
+
+  cloudSaveTimer = setTimeout(async () => {
+    try {
+      const { data: authResult, error: authError } =
+        await supabaseClient.auth.getUser();
+
+      if (authError || !authResult.user) return;
+
+      const { error } = await supabaseClient
+        .from('user_data')
+        .update({
+          payload: data,
+          updated_at: new Date().toISOString()
+        })
+        .eq('user_id', authResult.user.id);
+
+      if (error) {
+        console.error('Sauvegarde cloud échouée :', error.message);
+      } else {
+        console.log('Sauvegarde cloud réussie.');
+      }
+    } catch (error) {
+      console.error('Erreur de sauvegarde cloud :', error.message);
+    }
+  }, 1500);
+}
+
+function save() {
+  localStorage.setItem(KEY, JSON.stringify(data));
+  applyTheme();
+  render();
+  queueCloudSave();
+}
+
 async function cloudSignIn() {
   const email = $('cloudEmail').value.trim();
   const password = $('cloudPassword').value;
