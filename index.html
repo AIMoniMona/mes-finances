@@ -19,7 +19,49 @@
 <section id="savings" class="hidden"><div class="section-head"><h2>Objectifs d'épargne</h2><button class="primary" onclick="addGoal()">+ Objectif</button></div><div class="panel" id="goalList"></div></section>
 <section id="debts" class="hidden"><div class="section-head"><h2>Dettes & créances</h2><button class="primary" onclick="addDebt()">+ Ajouter</button></div><div class="panel" id="debtList"></div></section>
 <section id="recurring" class="hidden"><div class="section-head"><h2>Dépenses récurrentes</h2><button class="primary" onclick="addRecurring()">+ Ajouter</button></div><div class="panel" id="recurringList"></div><p class="muted">Les rappels sont indicatifs : l'application ne prélève pas d'argent automatiquement.</p></section>
-<section id="settings" class="hidden"><div class="section-head"><h2>Personnalisation</h2><button class="secondary smallbtn" onclick="showPage('home')">Terminé</button></div><div class="panel"><h3 style="margin-top:0">Couleurs de l’application</h3><p class="muted">Personnalise les couleurs de ton espace MoFin. Ton choix est conservé sur cet appareil et inclus dans tes sauvegardes.</p><div class="formgrid"><label class="field">Couleur principale<input id="themePrimary" type="color" value="#173D32" style="height:48px;padding:5px"></label><label class="field">Couleur d’accent<input id="themeAccent" type="color" value="#B8D9B2" style="height:48px;padding:5px"></label></div><button class="primary" style="width:100%;margin-top:14px" onclick="saveThemeFromInputs()">Enregistrer les couleurs</button></div><div class="panel"><h3 style="margin-top:0">Thèmes prédéfinis</h3><div style="display:grid;gap:9px"><button class="secondary" onclick="setTheme('#173D32','#B8D9B2')">🌿 Vert élégant</button><button class="secondary" onclick="setTheme('#183B66','#A9D5FF')">🔵 Bleu professionnel</button><button class="secondary" onclick="setTheme('#4B3478','#D9C7FF')">🟣 Violet moderne</button><button class="secondary" onclick="setTheme('#704052','#F0C7D5')">🌸 Rose poudré</button><button class="secondary" onclick="setTheme('#171A21','#91D9BF')">🌙 Sombre</button></div></div><div class="notice">☁️ Synchronisation : ton thème est prêt à être inclus dans la synchronisation cloud lorsqu’elle sera configurée. Pour le moment, les préférences sont enregistrées uniquement sur cet appareil. L’activation du cloud nécessitera une configuration supplémentaire.</div></section>
+<section id="settings" class="hidden"><div class="section-head"><h2>Personnalisation</h2><button class="secondary smallbtn" onclick="showPage('home')">Terminé</button></div>
+<div class="panel" id="cloudSyncPanel">
+  <h3 style="margin-top:0">☁️ Synchronisation cloud</h3>
+  <p class="muted">
+    Connecte-toi pour retrouver tes données MoFin sur ton ordinateur
+    et ton téléphone.
+  </p>
+
+  <label class="field">
+    Adresse e-mail
+    <input id="cloudEmail" type="email"
+      placeholder="Ton adresse e-mail"
+      autocomplete="email">
+  </label>
+
+  <label class="field" style="margin-top:12px">
+    Mot de passe
+    <input id="cloudPassword" type="password"
+      placeholder="Ton mot de passe"
+      autocomplete="current-password">
+  </label>
+
+  <button class="primary" style="width:100%;margin-top:14px"
+    onclick="cloudSignIn()">
+    Se connecter et synchroniser
+  </button>
+
+  <button class="secondary" style="width:100%;margin-top:8px"
+    onclick="cloudSyncNow()">
+    Synchroniser maintenant
+  </button>
+
+  <button class="secondary" style="width:100%;margin-top:8px"
+    onclick="cloudSignOut()">
+    Se déconnecter
+  </button>
+
+  <p id="cloudStatus" class="muted" role="status"
+    style="margin-bottom:0">
+    Non connecté au cloud.
+  </p>
+</div>
+<div class="panel"><h3 style="margin-top:0">Couleurs de l’application</h3><p class="muted">Personnalise les couleurs de ton espace MoFin. Ton choix est conservé sur cet appareil et inclus dans tes sauvegardes.</p><div class="formgrid"><label class="field">Couleur principale<input id="themePrimary" type="color" value="#173D32" style="height:48px;padding:5px"></label><label class="field">Couleur d’accent<input id="themeAccent" type="color" value="#B8D9B2" style="height:48px;padding:5px"></label></div><button class="primary" style="width:100%;margin-top:14px" onclick="saveThemeFromInputs()">Enregistrer les couleurs</button></div><div class="panel"><h3 style="margin-top:0">Thèmes prédéfinis</h3><div style="display:grid;gap:9px"><button class="secondary" onclick="setTheme('#173D32','#B8D9B2')">🌿 Vert élégant</button><button class="secondary" onclick="setTheme('#183B66','#A9D5FF')">🔵 Bleu professionnel</button><button class="secondary" onclick="setTheme('#4B3478','#D9C7FF')">🟣 Violet moderne</button><button class="secondary" onclick="setTheme('#704052','#F0C7D5')">🌸 Rose poudré</button><button class="secondary" onclick="setTheme('#171A21','#91D9BF')">🌙 Sombre</button></div></div><div class="notice">☁️ Synchronisation : ton thème est prêt à être inclus dans la synchronisation cloud lorsqu’elle sera configurée. Pour le moment, les préférences sont enregistrées uniquement sur cet appareil. L’activation du cloud nécessitera une configuration supplémentaire.</div></section>
 <section id="reports" class="hidden"><div class="section-head"><h2>Rapports</h2><button class="secondary" onclick="exportCSV()">Exporter Excel/CSV</button></div><div class="panel" id="reportSummary"></div><div class="panel"><h3 style="margin-top:0">Dépenses par catégorie</h3><div id="categoryChart"></div></div><div class="panel"><h3 style="margin-top:0">Sauvegarde</h3><p class="muted">Télécharge une copie de toutes tes données au format JSON.</p><button class="secondary" onclick="backup()">Exporter la sauvegarde</button><label class="secondary" style="display:inline-block;margin-left:6px">Importer<input type="file" accept="application/json" onchange="restore(event)" hidden></label></div></section></main>
 <nav class="tabs"><button class="tab active" data-page="home" onclick="showPage('home',this)"><span>⌂</span>Accueil</button><button class="tab" data-page="transactions" onclick="showPage('transactions',this)"><span>⇄</span>Opérations</button><button class="tab" data-page="budgets" onclick="showPage('budgets',this)"><span>▤</span>Budget</button><button class="tab" data-page="debts" onclick="showPage('debts',this)"><span>⇆</span>Dettes</button><button class="tab" data-page="reports" onclick="showPage('reports',this)"><span>▥</span>Rapports</button></nav>
 <dialog id="modal"><div class="dialogtop"><h2 id="modalTitle">Ajouter une opération</h2><button class="close" onclick="modal.close()">×</button></div><div id="modalBody"></div></dialog>
