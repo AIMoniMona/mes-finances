@@ -67,44 +67,189 @@
 <dialog id="modal"><div class="dialogtop"><h2 id="modalTitle">Ajouter une opération</h2><button class="close" onclick="modal.close()">×</button></div><div id="modalBody"></div></dialog>
 <script>
 const KEY='mes-finances-v1';const defaultData={settings:{theme:{primary:'#173D32',accent:'#B8D9B2'}},accounts:[{name:'Espèces',currency:'XOF',opening:0},{name:'Banque',currency:'XOF',opening:0},{name:'Mobile Money',currency:'XOF',opening:0},{name:'Épargne',currency:'XOF',opening:0}],transactions:[],budgets:[],goals:[],debts:[],recurring:[]};let data=load();function load(){try{const x=JSON.parse(localStorage.getItem(KEY)||'{}');return {...defaultData,...x,settings:{...defaultData.settings,...(x.settings||{}),theme:{...defaultData.settings.theme,...((x.settings||{}).theme||{})}}}}catch{return structuredClone(defaultData)}}
+
 let cloudSaveTimer = null;
+let cloudPollTimer = null;
+let lastCloudUpdatedAt = null;
+let cloudSyncBusy = false;
 
-function queueCloudSave() {
-  clearTimeout(cloudSaveTimer);
-
-  cloudSaveTimer = setTimeout(async () => {
-    try {
-      const { data: authResult, error: authError } =
-        await supabaseClient.auth.getUser();
-
-      if (authError || !authResult.user) return;
-
-      const { error } = await supabaseClient
-        .from('user_data')
-        .update({
-          payload: data,
-          updated_at: new Date().toISOString()
-        })
-        .eq('user_id', authResult.user.id);
-
-      if (error) {
-        console.error('Sauvegarde cloud échouée :', error.message);
-      } else {
-        console.log('Sauvegarde cloud réussie.');
+function mergeCloudData(cloudData, localData) {
+  const merged = {
+    ...defaultData,
+    ...cloudData,
+    ...localData,
+    settings: {
+      ...defaultData.settings,
+      ...(cloudData.settings || {}),
+      ...(localData.settings || {}),
+      theme: {
+        ...defaultData.settings.theme,
+        ...((cloudData.settings || {}).theme || {}),
+        ...((localData.settings || {}).theme || {})
       }
-    } catch (error) {
-      console.error('Erreur de sauvegarde cloud :', error.message);
     }
-  }, 1500);
+  };
+
+  const collections = [
+    'transactions',
+    'budgets',
+    'goals',
+    'debts',
+    'recurring',
+    'accounts'
+  ];
+
+  for (const key of collections) {
+    const cloudItems = Array.isArray(cloudData[key])
+      ? cloudData[key] : [];
+    const localItems = Array.isArray(localData[key])
+      ? localData[key] : [];
+
+    const items = new Map();
+
+    function itemKey(item, index, source) {
+      if (key === 'accounts') {
+        return 'account:' + String(item.name || '')
+          .trim().toLowerCase();
+      }
+
+      if (item.id !== undefined && item.id !== null) {
+        return 'id:' + String(item.id);
+      }
+
+      return source + ':' + index + ':' + JSON.stringify(item);
+    }
+
+    cloudItems.forEach((item, index) => {
+      items.set(itemKey(item, index, 'cloud'), item);
+    });
+
+    localItems.forEach((item, index) => {
+      items.set(itemKey(item, index, 'local'), item);
+    });
+
+    merged[key] = Array.from(items.values());
+  }
+
+  return merged;
+}
+
+async function getCloudUser() {
+  const { data: result, error } =
+    await supabaseClient.auth.getUser();
+
+  if (error) throw error;
+  return result.user;
+}
+
+async function pushCloudData(user, payload) {
+  const timestamp = new Date().toISOString();
+
+  const { error } = await supabaseClient
+    .from('user_data')
+    .update({
+      payload,
+      updated_at: timestamp
+    })
+    .eq('user_id', user.id);
+
+  if (error) throw error;
+
+  lastCloudUpdatedAt = timestamp;
 }
 
 function save() {
   localStorage.setItem(KEY, JSON.stringify(data));
   applyTheme();
   render();
-  queueCloudSave();
+
+  clearTimeout(cloudSaveTimer);
+
+  cloudSaveTimer = setTimeout(async () => {
+    if (cloudSyncBusy) return;
+
+    try {
+      const user = await getCloudUser();
+      if (!user) return;
+
+      cloudSyncBusy = true;
+      await pushCloudData(user, data);
+    } catch (error) {
+      console.error('Sauvegarde cloud échouée :', error.message);
+    } finally {
+      cloudSyncBusy = false;
+    }
+  }, 1500);
 }
 
+async function checkCloudChanges() {
+  if (cloudSyncBusy || document.visibilityState === 'hidden') return;
+
+  try {
+    const user = await getCloudUser();
+    if (!user) return;
+
+    cloudSyncBusy = true;
+
+    const { data: row, error } = await supabaseClient
+      .from('user_data')
+      .select('payload, updated_at')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!row || !row.payload) return;
+
+    if (
+      lastCloudUpdatedAt &&
+      new Date(row.updated_at) <= new Date(lastCloudUpdatedAt)
+    ) {
+      return;
+    }
+
+    const merged = mergeCloudData(row.payload, data);
+    const mergedJSON = JSON.stringify(merged);
+    const cloudJSON = JSON.stringify(row.payload);
+
+    data = merged;
+    localStorage.setItem(KEY, mergedJSON);
+    applyTheme();
+    render();
+
+    if (mergedJSON !== cloudJSON) {
+      await pushCloudData(user, merged);
+    } else {
+      lastCloudUpdatedAt = row.updated_at;
+    }
+
+    const status = document.getElementById('cloudStatus');
+    if (status) {
+      status.textContent =
+        'Synchronisation automatique active. Dernière vérification : ' +
+        new Date().toLocaleTimeString('fr-FR');
+    }
+  } catch (error) {
+    console.error('Vérification cloud échouée :', error.message);
+  } finally {
+    cloudSyncBusy = false;
+  }
+}
+
+function startCloudAutoSync() {
+  clearInterval(cloudPollTimer);
+
+  checkCloudChanges();
+
+  cloudPollTimer = setInterval(() => {
+    checkCloudChanges();
+  }, 5000);
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    checkCloudChanges();
+  }
+});
 async function cloudSignIn() {
   const email = $('cloudEmail').value.trim();
   const password = $('cloudPassword').value;
@@ -123,16 +268,17 @@ async function cloudSignIn() {
 
     if (error) throw error;
 
-    status.textContent = 'Connexion réussie. Vérification des données…';
-    await cloudSyncNow();
-  } catch (error) {
+   status.textContent = 'Connexion réussie. Vérification des données…';
+await cloudSyncNow();
+startCloudAutoSync(); catch (error) {
     status.textContent = 'Erreur : ' + error.message;
   }
 }
 
 async function cloudSignOut() {
   try {
-    const { error } = await supabaseClient.auth.signOut();
+    const { error } = awaitclearInterval(cloudPollTimer);
+clearTimeout(cloudSaveTimer); supabaseClient.auth.signOut();
     if (error) throw error;
     $('cloudStatus').textContent = 'Déconnecté. Les données locales sont conservées.';
     $('cloudPassword').value = '';
