@@ -66,7 +66,170 @@
 <nav class="tabs"><button class="tab active" data-page="home" onclick="showPage('home',this)"><span>⌂</span>Accueil</button><button class="tab" data-page="transactions" onclick="showPage('transactions',this)"><span>⇄</span>Opérations</button><button class="tab" data-page="budgets" onclick="showPage('budgets',this)"><span>▤</span>Budget</button><button class="tab" data-page="debts" onclick="showPage('debts',this)"><span>⇆</span>Dettes</button><button class="tab" data-page="reports" onclick="showPage('reports',this)"><span>▥</span>Rapports</button></nav>
 <dialog id="modal"><div class="dialogtop"><h2 id="modalTitle">Ajouter une opération</h2><button class="close" onclick="modal.close()">×</button></div><div id="modalBody"></div></dialog>
 <script>
-const KEY='mes-finances-v1';const defaultData={settings:{theme:{primary:'#173D32',accent:'#B8D9B2'}},accounts:[{name:'Espèces',currency:'XOF',opening:0},{name:'Banque',currency:'XOF',opening:0},{name:'Mobile Money',currency:'XOF',opening:0},{name:'Épargne',currency:'XOF',opening:0}],transactions:[],budgets:[],goals:[],debts:[],recurring:[]};let data=load();function load(){try{const x=JSON.parse(localStorage.getItem(KEY)||'{}');return {...defaultData,...x,settings:{...defaultData.settings,...(x.settings||{}),theme:{...defaultData.settings.theme,...((x.settings||{}).theme||{})}}}}catch{return structuredClone(defaultData)}}function save(){localStorage.setItem(KEY,JSON.stringify(data));applyTheme();render()}const $=id=>document.getElementById(id);const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const currencies=['XOF','EUR','USD'];const symbols={XOF:'FCFA',EUR:'€',USD:'$'};function fmt(n,c){return new Intl.NumberFormat('fr-FR',{maximumFractionDigits:c==='XOF'?0:2,minimumFractionDigits:0}).format(Number(n)||0)+' '+symbols[c||'XOF']}function rates(){
+const KEY='mes-finances-v1';const defaultData={settings:{theme:{primary:'#173D32',accent:'#B8D9B2'}},accounts:[{name:'Espèces',currency:'XOF',opening:0},{name:'Banque',currency:'XOF',opening:0},{name:'Mobile Money',currency:'XOF',opening:0},{name:'Épargne',currency:'XOF',opening:0}],transactions:[],budgets:[],goals:[],debts:[],recurring:[]};let data=load();function load(){try{const x=JSON.parse(localStorage.getItem(KEY)||'{}');return {...defaultData,...x,settings:{...defaultData.settings,...(x.settings||{}),theme:{...defaultData.settings.theme,...((x.settings||{}).theme||{})}}}}catch{return structuredClone(defaultData)}}function save(){localStorage.setItem(KEY,JSON.stringify(data));
+async function cloudSignIn() {
+  const email = $('cloudEmail').value.trim();
+  const password = $('cloudPassword').value;
+  const status = $('cloudStatus');
+
+  if (!email || !password) {
+    status.textContent = 'Saisis ton adresse e-mail et ton mot de passe.';
+    return;
+  }
+
+  status.textContent = 'Connexion en cours…';
+
+  try {
+    const { data: result, error } =
+      await supabaseClient.auth.signInWithPassword({ email, password });
+
+    if (error) throw error;
+
+    status.textContent = 'Connexion réussie. Vérification des données…';
+    await cloudSyncNow();
+  } catch (error) {
+    status.textContent = 'Erreur : ' + error.message;
+  }
+}
+
+async function cloudSignOut() {
+  try {
+    const { error } = await supabaseClient.auth.signOut();
+    if (error) throw error;
+    $('cloudStatus').textContent = 'Déconnecté. Les données locales sont conservées.';
+    $('cloudPassword').value = '';
+  } catch (error) {
+    $('cloudStatus').textContent = 'Erreur : ' + error.message;
+  }
+}
+
+async function cloudSyncNow() {
+  const status = $('cloudStatus');
+  status.textContent = 'Vérification du cloud…';
+
+  try {
+    const { data: authResult, error: authError } =
+      await supabaseClient.auth.getUser();
+
+    if (authError) throw authError;
+    const user = authResult.user;
+
+    if (!user) {
+      status.textContent = 'Connecte-toi avant de synchroniser.';
+      return;
+    }
+
+    const { data: cloudRow, error: readError } = await supabaseClient
+      .from('user_data')
+      .select('payload, updated_at')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (readError) throw readError;
+
+    const hasLocalData = ['transactions', 'budgets', 'goals', 'debts', 'recurring']
+      .some(key => Array.isArray(data[key]) && data[key].length > 0);
+
+    if (!cloudRow) {
+      const { error } = await supabaseClient
+        .from('user_data')
+        .insert({
+          user_id: user.id,
+          payload: data,
+          updated_at: new Date().toISOString()
+        });
+
+      if (error) throw error;
+      status.textContent = 'Première sauvegarde envoyée au cloud. Tes données locales sont conservées.';
+      return;
+    }
+
+    if (!hasLocalData) {
+      if (confirm('Des données existent dans le cloud. Veux-tu les récupérer sur cet appareil ?')) {
+        const cloudData = cloudRow.payload;
+
+        if (!cloudData || typeof cloudData !== 'object') {
+          throw new Error('Les données cloud sont illisibles. Aucune donnée locale n’a été modifiée.');
+        }
+
+        data = {
+          ...defaultData,
+          ...cloudData,
+          settings: {
+            ...defaultData.settings,
+            ...(cloudData.settings || {}),
+            theme: {
+              ...defaultData.settings.theme,
+              ...((cloudData.settings || {}).theme || {})
+            }
+          }
+        };
+
+        localStorage.setItem(KEY, JSON.stringify(data));
+        applyTheme();
+        render();
+        status.textContent = 'Données récupérées du cloud sur cet appareil.';
+      } else {
+        status.textContent = 'Aucune modification effectuée.';
+      }
+      return;
+    }
+
+    const choice = prompt(
+      'Des données existent déjà sur cet appareil et dans le cloud.\n\n' +
+      'Tape CLOUD pour récupérer les données du cloud sur cet appareil.\n' +
+      'Tape LOCAL pour remplacer les données du cloud par celles de cet appareil.\n' +
+      'Toute autre réponse annule.'
+    );
+
+    if (choice && choice.trim().toUpperCase() === 'CLOUD') {
+      const cloudData = cloudRow.payload;
+
+      if (!cloudData || typeof cloudData !== 'object') {
+        throw new Error('Les données cloud sont illisibles. Aucune donnée locale n’a été modifiée.');
+      }
+
+      data = {
+        ...defaultData,
+        ...cloudData,
+        settings: {
+          ...defaultData.settings,
+          ...(cloudData.settings || {}),
+          theme: {
+            ...defaultData.settings.theme,
+            ...((cloudData.settings || {}).theme || {})
+          }
+        }
+      };
+
+      localStorage.setItem(KEY, JSON.stringify(data));
+      applyTheme();
+      render();
+      status.textContent = 'Données du cloud récupérées sur cet appareil.';
+    } else if (choice && choice.trim().toUpperCase() === 'LOCAL') {
+      if (!confirm('Confirmer le remplacement des données du cloud par les données locales de cet appareil ?')) {
+        status.textContent = 'Opération annulée. Aucune donnée modifiée.';
+        return;
+      }
+
+      const { error } = await supabaseClient
+        .from('user_data')
+        .update({
+          payload: data,
+          updated_at: new Date().toISOString()
+        })
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+      status.textContent = 'Données locales sauvegardées dans le cloud.';
+    } else {
+      status.textContent = 'Synchronisation annulée. Aucune donnée modifiée.';
+    }
+  } catch (error) {
+    status.textContent = 'Erreur de synchronisation : ' + error.message;
+  }
+}
+applyTheme();render()}const $=id=>document.getElementById(id);const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const currencies=['XOF','EUR','USD'];const symbols={XOF:'FCFA',EUR:'€',USD:'$'};function fmt(n,c){return new Intl.NumberFormat('fr-FR',{maximumFractionDigits:c==='XOF'?0:2,minimumFractionDigits:0}).format(Number(n)||0)+' '+symbols[c||'XOF']}function rates(){
   return {
     XOF: 1,
     EUR: Number(localStorage.getItem('rateEUR')) || 655.957,
