@@ -250,13 +250,25 @@ document.addEventListener('visibilitychange', () => {
     checkCloudChanges();
   }
 });
+
 async function cloudSignIn() {
   const email = $('cloudEmail').value.trim();
   const password = $('cloudPassword').value;
   const status = $('cloudStatus');
 
   if (!email || !password) {
-    status.textContent = 'Saisis ton adresse e-mail et ton mot de passe.';
+    status.textContent =
+      'Saisis ton adresse e-mail et ton mot de passe.';
+    return;
+  
+async function cloudSignIn() {
+  const email = $('cloudEmail').value.trim();
+  const password = $('cloudPassword').value;
+  const status = $('cloudStatus');
+
+  if (!email || !password) {
+    status.textContent =
+      'Saisis ton adresse e-mail et ton mot de passe.';
     return;
   }
 
@@ -264,26 +276,41 @@ async function cloudSignIn() {
 
   try {
     const { data: result, error } =
-      await supabaseClient.auth.signInWithPassword({ email, password });
+      await supabaseClient.auth.signInWithPassword({
+        email,
+        password
+      });
 
     if (error) throw error;
 
-   status.textContent = 'Connexion réussie. Vérification des données…';
-await cloudSyncNow();
-startCloudAutoSync(); catch (error) {
+    status.textContent =
+      'Connexion réussie. Vérification des données…';
+
+    await cloudSyncNow();
+    startCloudAutoSync();
+
+  } catch (error) {
     status.textContent = 'Erreur : ' + error.message;
   }
 }
 
 async function cloudSignOut() {
+  clearInterval(cloudPollTimer);
+  clearTimeout(cloudSaveTimer);
+
   try {
-    const { error } = awaitclearInterval(cloudPollTimer);
-clearTimeout(cloudSaveTimer); supabaseClient.auth.signOut();
+    const { error } = await supabaseClient.auth.signOut();
+
     if (error) throw error;
-    $('cloudStatus').textContent = 'Déconnecté. Les données locales sont conservées.';
+
+    $('cloudStatus').textContent =
+      'Déconnecté. Les données locales sont conservées.';
+
     $('cloudPassword').value = '';
+
   } catch (error) {
-    $('cloudStatus').textContent = 'Erreur : ' + error.message;
+    $('cloudStatus').textContent =
+      'Erreur : ' + error.message;
   }
 }
 
