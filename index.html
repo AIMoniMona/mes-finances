@@ -495,6 +495,7 @@ return `<div class="row">
 <div class="muted">${esc(t.date)} · ${esc(t.category)} · ${esc(t.account)}</div>
 </div>
 <div class="amount ${t.type==='income'?'positive':'negative'}">${t.type==='income'?'+':'−'}${fmt(t.amount,t.currency)}</div>
+<button class="secondary smallbtn" onclick="editTransaction(${i})" title="Modifier cette opération">✏️</button>
 <button class="secondary smallbtn" onclick="deleteTransaction(${i})" title="Supprimer cette opération">🗑</button>
 </div>`;
 }).join(''):'<div class="empty">Aucune opération enregistrée. Ajoute ton premier revenu ou ta première dépense.</div>';$('recentTransactions').innerHTML=txhtml(data.transactions.slice(-5).reverse());$('allTransactions').innerHTML=txhtml(data.transactions);$('allAccounts').innerHTML=data.accounts.map(a=>`<div class="row"><div><b>${esc(a.name)}</b><div class="muted">Solde initial : ${fmt(a.opening,a.currency)}</div></div><div style="text-align:right"><b>${fmt(accountBalance(a),a.currency)}</b><div class="muted">${a.currency}</div></div></div>`).join('');$('budgetList').innerHTML=data.budgets.length?data.budgets.map((b,i)=>{let spent=monthTx().filter(t=>t.type==='expense'&&t.category===b.category).reduce((s,t)=>s+toXof(t.amount,t.currency),0),limit=toXof(b.amount,b.currency),pct=limit?Math.min(100,spent/limit*100):0;return `<div class="row"><div style="flex:1"><b>${esc(b.category)}</b><div class="muted">Dépensé ${moneyXof(spent)} / budget ${fmt(b.amount,b.currency)}</div><div class="progress"><div style="width:${pct}%"></div></div></div><button class="secondary smallbtn" onclick="removeItem('budgets',${i})">×</button></div>`}).join(''):'<div class="empty">Aucun budget défini.</div>';$('goalList').innerHTML=data.goals.length?data.goals.map((g,i)=>`<div class="row"><div style="flex:1"><b>${esc(g.name)}</b><div class="muted">${fmt(g.saved,g.currency)} sur ${fmt(g.target,g.currency)}</div><div class="progress"><div style="width:${Math.min(100,100*g.saved/Math.max(1,g.target))}%"></div></div></div><button class="secondary smallbtn" onclick="contribute(${i})">+ Ajouter</button><button class="secondary smallbtn" onclick="removeItem('goals',${i})">×</button></div>`).join(''):'<div class="empty">Aucun objectif d’épargne.</div>';$('debtList').innerHTML=data.debts.length?data.debts.map((d,i)=>`<div class="row"><div><b>${esc(d.person)}</b><div class="muted">${d.kind==='owed'?'Je dois':'On me doit'} · ${esc(d.due||'Sans échéance')}</div></div><b>${fmt(d.amount,d.currency)}</b><button class="secondary smallbtn" onclick="removeItem('debts',${i})">×</button></div>`).join(''):'<div class="empty">Aucune dette ou créance.</div>';$('recurringList').innerHTML=data.recurring.length?data.recurring.map((r,i)=>`<div class="row"><div><b>${esc(r.label)}</b><div class="muted">${esc(r.frequency)} · ${esc(r.category)} · ${esc(r.account)}</div></div><b>${fmt(r.amount,r.currency)}</b><button class="secondary smallbtn" onclick="removeItem('recurring',${i})">×</button></div>`).join(''):'<div class="empty">Aucune dépense récurrente.</div>';$('reportSummary').innerHTML=`<div class="row"><span>Revenus du mois</span><b class="positive">${moneyXof(inc)}</b></div><div class="row"><span>Dépenses du mois</span><b class="negative">${moneyXof(out)}</b></div><div class="row"><span>Solde du mois</span><b>${moneyXof(inc-out)}</b></div><div class="row"><span>Solde total estimé</span><b>${moneyXof(totalXof())}</b></div><p class="muted">Conversion indicative : 1 EUR = ${rates().EUR} XOF ; 1 USD = ${rates().USD} XOF. <button class="secondary smallbtn" onclick="editRates()">Modifier les taux</button></p>`;let cats={};m.filter(t=>t.type==='expense').forEach(t=>cats[t.category]=(cats[t.category]||0)+toXof(t.amount,t.currency));let max=Math.max(1,...Object.values(cats));$('categoryChart').innerHTML=Object.keys(cats).length?Object.entries(cats).sort((a,b)=>b[1]-a[1]).map(([c,v])=>`<div style="margin:13px 0"><div class="row" style="padding:0;border:0"><span>${esc(c)}</span><b>${moneyXof(v)}</b></div><div class="progress"><div style="width:${v/max*100}%"></div></div></div>`).join(''):'<div class="empty">Les dépenses par catégorie apparaîtront ici.</div>'}
@@ -524,7 +525,97 @@ function deleteTransaction(index) {
   alert("Opération supprimée. Les soldes et analyses ont été actualisés.");
 }
 
-function formModal(title,html,fn){$('modalTitle').textContent=title;$('modalBody').innerHTML=html;$('modal').showModal()}function currencyOptions(){return currencies.map(c=>`<option>${c}</option>`).join('')}function addBudget(){formModal('Créer un budget',`<form onsubmit="saveBudget(event)"><label class="field">Catégorie<input name="category" required placeholder="Ex. Alimentation"></label><div class="formgrid" style="margin-top:10px"><label class="field">Plafond<input name="amount" type="number" min="1" required></label><label class="field">Devise<select name="currency">${currencyOptions()}</select></label></div><button class="primary" style="margin-top:14px;width:100%">Enregistrer</button></form>`)}function saveBudget(e){e.preventDefault();let f=new FormData(e.target);data.budgets.push({category:f.get('category'),amount:+f.get('amount'),currency:f.get('currency')});save();$('modal').close()}function addGoal(){formModal('Nouvel objectif',`<form onsubmit="saveGoal(event)"><label class="field">Nom de l'objectif<input name="name" required placeholder="Ex. Fonds d'urgence"></label><div class="formgrid" style="margin-top:10px"><label class="field">Montant cible<input name="target" type="number" min="1" required></label><label class="field">Déjà épargné<input name="saved" type="number" min="0" value="0"></label><label class="field full">Devise<select name="currency">${currencyOptions()}</select></label></div><button class="primary" style="margin-top:14px;width:100%">Créer l'objectif</button></form>`)}function saveGoal(e){e.preventDefault();let f=new FormData(e.target);data.goals.push({name:f.get('name'),target:+f.get('target'),saved:+f.get('saved'),currency:f.get('currency')});save();$('modal').close()}function contribute(i){let n=prompt('Montant à ajouter à cet objectif ('+data.goals[i].currency+')');if(n!==null&&Number(n)>0){data.goals[i].saved+=Number(n);save()}}function addDebt(){formModal('Ajouter une dette ou créance',`<form onsubmit="saveDebt(event)"><label class="field">Type<select name="kind"><option value="owed">Je dois de l'argent</option><option value="receivable">On me doit de l'argent</option></select></label><label class="field" style="margin-top:10px">Personne / organisme<input name="person" required></label><div class="formgrid" style="margin-top:10px"><label class="field">Montant<input name="amount" type="number" min="0.01" required></label><label class="field">Devise<select name="currency">${currencyOptions()}</select></label><label class="field full">Échéance (facultatif)<input name="due" type="date"></label></div><button class="primary" style="margin-top:14px;width:100%">Enregistrer</button></form>`)}function saveDebt(e){e.preventDefault();let f=new FormData(e.target);data.debts.push({kind:f.get('kind'),person:f.get('person'),amount:+f.get('amount'),currency:f.get('currency'),due:f.get('due')});save();$('modal').close()}function addRecurring(){formModal('Dépense récurrente',`<form onsubmit="saveRecurring(event)"><label class="field">Libellé<input name="label" required placeholder="Ex. Loyer"></label><div class="formgrid" style="margin-top:10px"><label class="field">Montant<input name="amount" type="number" min="0.01" required></label><label class="field">Devise<select name="currency">${currencyOptions()}</select></label><label class="field">Fréquence<select name="frequency"><option>Mensuelle</option><option>Hebdomadaire</option><option>Annuelle</option></select></label><label class="field">Catégorie<input name="category" value="Factures"></label><label class="field full">Compte<select name="account">${data.accounts.map(a=>`<option>${esc(a.name)}</option>`).join('')}</select></label></div><button class="primary" style="margin-top:14px;width:100%">Enregistrer</button></form>`)}function saveRecurring(e){e.preventDefault();let f=new FormData(e.target);data.recurring.push(Object.fromEntries(['label','amount','currency','frequency','category','account'].map(k=>[k,k==='amount'?+f.get(k):f.get(k)])));save();$('modal').close()}function removeItem(k,i){if(confirm('Supprimer cet élément ?')){data[k].splice(i,1);save()}}function editAccounts(){
+function editTransaction(index) {
+  const t = data.transactions[index];
+
+  if (!t) {
+    alert("Opération introuvable.");
+    return;
+  }
+
+  $('modalTitle').textContent = "Modifier l'opération";
+
+  $('modalBody').innerHTML = `
+    <form onsubmit="updateTransaction(event,${index})">
+      <div class="formgrid">
+
+        <label class="field full">
+          Libellé
+          <input name="label" value="${esc(t.label)}" required>
+        </label>
+
+        <label class="field">
+          Montant
+          <input name="amount" type="number" min="0.01"
+            step="any" value="${Number(t.amount)}" required>
+        </label>
+
+        <label class="field">
+          Devise
+          <select name="currency">
+            ${currencies.map(c =>
+              `<option ${t.currency===c?'selected':''}>${c}</option>`
+            ).join('')}
+          </select>
+        </label>
+
+        <label class="field">
+          Date
+          <input name="date" type="date"
+            value="${esc(t.date)}" required>
+        </label>
+
+        <label class="field">
+          Catégorie
+          <input name="category" value="${esc(t.category)}" required>
+        </label>
+
+        <label class="field full">
+          Compte
+          <select name="account">
+            ${data.accounts.map(a =>
+              `<option ${t.account===a.name?'selected':''}>${esc(a.name)}</option>`
+            ).join('')}
+          </select>
+        </label>
+
+        <label class="field full">
+          Note
+          <input name="note" value="${esc(t.note||'')}">
+        </label>
+
+      </div>
+
+      <button class="primary" style="width:100%;margin-top:16px">
+        Enregistrer les modifications
+      </button>
+    </form>
+  `;
+
+  $('modal').showModal();
+}
+
+function updateTransaction(e,index) {
+  e.preventDefault();
+
+  const t = data.transactions[index];
+  if (!t) return;
+
+  const f = new FormData(e.target);
+
+  t.label = String(f.get('label')).trim();
+  t.amount = Number(f.get('amount'));
+  t.currency = f.get('currency');
+  t.date = f.get('date');
+  t.category = String(f.get('category')).trim();
+  t.account = f.get('account');
+  t.note = String(f.get('note')||'');
+
+  save();
+  $('modal').close();
+
+  alert("Opération modifiée avec succès.");
+}function formModal(title,html,fn){$('modalTitle').textContent=title;$('modalBody').innerHTML=html;$('modal').showModal()}function currencyOptions(){return currencies.map(c=>`<option>${c}</option>`).join('')}function addBudget(){formModal('Créer un budget',`<form onsubmit="saveBudget(event)"><label class="field">Catégorie<input name="category" required placeholder="Ex. Alimentation"></label><div class="formgrid" style="margin-top:10px"><label class="field">Plafond<input name="amount" type="number" min="1" required></label><label class="field">Devise<select name="currency">${currencyOptions()}</select></label></div><button class="primary" style="margin-top:14px;width:100%">Enregistrer</button></form>`)}function saveBudget(e){e.preventDefault();let f=new FormData(e.target);data.budgets.push({category:f.get('category'),amount:+f.get('amount'),currency:f.get('currency')});save();$('modal').close()}function addGoal(){formModal('Nouvel objectif',`<form onsubmit="saveGoal(event)"><label class="field">Nom de l'objectif<input name="name" required placeholder="Ex. Fonds d'urgence"></label><div class="formgrid" style="margin-top:10px"><label class="field">Montant cible<input name="target" type="number" min="1" required></label><label class="field">Déjà épargné<input name="saved" type="number" min="0" value="0"></label><label class="field full">Devise<select name="currency">${currencyOptions()}</select></label></div><button class="primary" style="margin-top:14px;width:100%">Créer l'objectif</button></form>`)}function saveGoal(e){e.preventDefault();let f=new FormData(e.target);data.goals.push({name:f.get('name'),target:+f.get('target'),saved:+f.get('saved'),currency:f.get('currency')});save();$('modal').close()}function contribute(i){let n=prompt('Montant à ajouter à cet objectif ('+data.goals[i].currency+')');if(n!==null&&Number(n)>0){data.goals[i].saved+=Number(n);save()}}function addDebt(){formModal('Ajouter une dette ou créance',`<form onsubmit="saveDebt(event)"><label class="field">Type<select name="kind"><option value="owed">Je dois de l'argent</option><option value="receivable">On me doit de l'argent</option></select></label><label class="field" style="margin-top:10px">Personne / organisme<input name="person" required></label><div class="formgrid" style="margin-top:10px"><label class="field">Montant<input name="amount" type="number" min="0.01" required></label><label class="field">Devise<select name="currency">${currencyOptions()}</select></label><label class="field full">Échéance (facultatif)<input name="due" type="date"></label></div><button class="primary" style="margin-top:14px;width:100%">Enregistrer</button></form>`)}function saveDebt(e){e.preventDefault();let f=new FormData(e.target);data.debts.push({kind:f.get('kind'),person:f.get('person'),amount:+f.get('amount'),currency:f.get('currency'),due:f.get('due')});save();$('modal').close()}function addRecurring(){formModal('Dépense récurrente',`<form onsubmit="saveRecurring(event)"><label class="field">Libellé<input name="label" required placeholder="Ex. Loyer"></label><div class="formgrid" style="margin-top:10px"><label class="field">Montant<input name="amount" type="number" min="0.01" required></label><label class="field">Devise<select name="currency">${currencyOptions()}</select></label><label class="field">Fréquence<select name="frequency"><option>Mensuelle</option><option>Hebdomadaire</option><option>Annuelle</option></select></label><label class="field">Catégorie<input name="category" value="Factures"></label><label class="field full">Compte<select name="account">${data.accounts.map(a=>`<option>${esc(a.name)}</option>`).join('')}</select></label></div><button class="primary" style="margin-top:14px;width:100%">Enregistrer</button></form>`)}function saveRecurring(e){e.preventDefault();let f=new FormData(e.target);data.recurring.push(Object.fromEntries(['label','amount','currency','frequency','category','account'].map(k=>[k,k==='amount'?+f.get(k):f.get(k)])));save();$('modal').close()}function removeItem(k,i){if(confirm('Supprimer cet élément ?')){data[k].splice(i,1);save()}}function editAccounts(){
   formModal('Gérer les comptes', `
     <div style="margin-bottom:14px">
       <p class="muted">Modifie les informations de tes comptes. Les opérations existantes sont conservées.</p>
