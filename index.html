@@ -688,7 +688,26 @@ function updateTransaction(e,index) {
     if(!Number.isFinite(amount)||amount<=0){
       alert("Veuillez saisir un montant valide.");
       return;
-    }
+    }const source=data.accounts.find(a=>a.name===fromAccount);
+
+if(!source){
+  alert("Compte source introuvable.");
+  return;
+}
+
+// Le solde actuel inclut déjà l'ancien transfert.
+// On restitue donc virtuellement son ancien montant
+// si le compte source reste le même.
+let availableXof=toXof(accountBalance(source),source.currency);
+
+if(t.fromAccount===fromAccount){
+  availableXof+=toXof(t.amount,t.currency);
+}
+
+if(toXof(amount,t.currency)>availableXof){
+  alert("Solde insuffisant sur le compte source pour cette modification.");
+  return;
+}
 
     // Mettre à jour le montant de l'objectif lié
     if(t.goalAction==='contribution'){
