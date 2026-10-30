@@ -668,7 +668,39 @@ function updateTransaction(e,index) {
     </button>
   `);
 }
+function deleteAccount(i) {
+  const account = data.accounts[i];
 
+  if (!account) {
+    alert("Compte introuvable.");
+    return;
+  }
+
+  const usedTransactions = data.transactions.some(
+    t => t.account === account.name
+  );
+
+  const usedRecurring = data.recurring.some(
+    r => r.account === account.name
+  );
+
+  if (usedTransactions || usedRecurring) {
+    alert(
+      "Impossible de supprimer ce compte : il est utilisé par des opérations ou des dépenses récurrentes. Réaffecte-les d'abord à un autre compte."
+    );
+    return;
+  }
+
+  if (!confirm(`Veux-tu vraiment supprimer le compte « ${account.name} » ?`)) {
+    return;
+  }
+
+  data.accounts.splice(i, 1);
+  save();
+  $('modal').close();
+
+  alert("Compte supprimé avec succès.");
+}
 function saveAccountDetails(e,i){
   e.preventDefault();
 
